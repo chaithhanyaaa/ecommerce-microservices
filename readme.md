@@ -318,6 +318,14 @@ All remaining endpoints require a valid JWT.
 
 ---
 
+### Env formate
+```
+jwt.secret
+jwt.expiration
+DB_PASSWORD
+DB_USERNAME
+DB_URL
+```
 ## Module Outcome
 
 After completing this module:
