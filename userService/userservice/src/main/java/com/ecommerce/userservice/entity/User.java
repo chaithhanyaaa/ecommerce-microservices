@@ -1,10 +1,7 @@
 package com.ecommerce.userservice.entity;
 
-import jakarta.persistence.Entity;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Table;
-import jakarta.persistence.Id;
+import com.ecommerce.userservice.enums.Role;
+import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -23,4 +20,8 @@ public class User
     private String password;
 
     private String name;
+
+
+    @Enumerated(EnumType.STRING)
+    private Role role;
 }

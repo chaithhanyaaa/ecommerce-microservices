@@ -16,6 +16,6 @@ public class TestController
     @GetMapping("/")
     public String test()
     {
-        return  service.getMessage();
+        return  "working";
     }
 }
