@@ -336,3 +336,384 @@ After completing this module:
 * Role-based authorization foundation
 * Production-style Spring Security configuration
 * Authentication ready to be reused across all upcoming microservices
+
+
+---
+
+
+## ✅ Module 2 — Product Service
+
+### Objective
+
+Build a dedicated Product Service responsible for managing product information while keeping inventory management isolated in a separate microservice. The service should remain lightweight, stateless, and independently scalable.
+
+---
+
+## Features Implemented
+
+* Create Product API
+* Get Product by ID API
+* JWT Authentication
+* Stateless Authentication
+* Role-Based Authorization (`SELLER`)
+* Request Validation
+* Spring Security
+* Global Exception Handling
+* MySQL Integration
+* Environment Variable Configuration
+
+---
+
+## Database Design
+
+### Products
+
+```text
+id
+seller_id
+name
+description
+brand
+category
+gender
+actual_price
+offer_price
+is_active
+created_at
+updated_at
+```
+
+---
+
+# Product Creation Flow
+
+```text
+Seller
+    │
+Authorization: Bearer <JWT>
+    │
+    ▼
+POST /products
+    │
+    ▼
+JwtAuthenticationFilter
+    │
+    ▼
+Validate JWT
+    │
+    ▼
+Extract Seller Information
+    │
+    ▼
+Product Controller
+    │
+    ▼
+Product Service
+    │
+    ▼
+Validate Business Rules
+    │
+    ▼
+Save Product
+    │
+    ▼
+Return Product ID
+```
+
+---
+
+# Product Retrieval Flow
+
+```text
+Client
+    │
+Authorization: Bearer <JWT>
+    │
+    ▼
+GET /products/{productId}
+    │
+    ▼
+JwtAuthenticationFilter
+    │
+    ▼
+Validate JWT
+    │
+    ▼
+Product Controller
+    │
+    ▼
+Product Service
+    │
+    ▼
+Fetch Product
+    │
+    ▼
+Return Product Details
+```
+
+---
+
+# Key Design Decisions
+
+## 1. Separate Product and Inventory Services
+
+### Option 1 (Rejected)
+
+Store product information and stock inside the same service.
+
+```text
+Product
+id
+name
+price
+stock
+```
+
+### Option 2 (Chosen)
+
+Separate responsibilities into two independent services.
+
+```text
+Product Service
+----------------
+Product Information
+
+Inventory Service
+-----------------
+Stock Information
+```
+
+### Why?
+
+Product information changes infrequently, whereas inventory changes continuously due to:
+
+* Orders
+* Returns
+* Restocking
+
+Keeping them separate allows each service to evolve and scale independently.
+
+---
+
+## 2. Seller Ownership from JWT
+
+### Option 1 (Rejected)
+
+Allow the client to send the seller ID.
+
+```json
+{
+  "sellerId": 5,
+  "name": "T-Shirt"
+}
+```
+
+Problem:
+
+A malicious client could create products under another seller's account.
+
+---
+
+### Option 2 (Chosen)
+
+Extract the seller ID directly from the validated JWT.
+
+```text
+JWT
+    │
+    ▼
+Extract userId
+    │
+    ▼
+Store as seller_id
+```
+
+Advantages:
+
+* Prevents privilege escalation.
+* Seller identity cannot be manipulated.
+* Server remains the source of truth.
+
+---
+
+## 3. Local JWT Validation
+
+Every protected request validates the JWT locally.
+
+```text
+Client
+    │
+JWT
+    │
+    ▼
+Product Service
+```
+
+instead of
+
+```text
+Product Service
+      │
+      ▼
+User Service
+      │
+Validate JWT
+```
+
+Reasons:
+
+* Eliminates unnecessary network calls.
+* Lower request latency.
+* Better scalability.
+* No authentication bottleneck.
+
+---
+
+## 4. Separate Product and Inventory Databases
+
+Chosen Architecture
+
+```text
+Product Database
+----------------
+Product Information
+
+Inventory Database
+------------------
+Stock
+Sizes
+Availability
+```
+
+Reasons:
+
+* Independent ownership.
+* Independent scaling.
+* Better separation of business domains.
+* Easier maintenance.
+
+---
+
+## 5. Size-wise Inventory
+
+Instead of
+
+```text
+Stock = 50
+```
+
+Inventory will maintain
+
+```text
+S  → 10
+M  → 20
+L  → 15
+XL → 5
+```
+
+Reason:
+
+Since this project focuses on clothing, inventory must be managed size-wise.
+
+---
+
+## 6. Why Product Service Does Not Store Stock
+
+Product Service owns only product metadata.
+
+Responsibilities:
+
+* Name
+* Description
+* Brand
+* Category
+* Gender
+* Price
+
+Inventory Service owns:
+
+* Available Sizes
+* Stock Quantity
+* Future Stock Updates
+* Stock Reservation
+
+This follows the **Single Responsibility Principle (SRP)**.
+
+---
+
+## 7. Synchronous Service Communication
+
+Current Architecture
+
+```text
+Product Service
+      │
+HTTP (RestTemplate)
+      │
+      ▼
+Inventory Service
+```
+
+### Why?
+
+Product creation is a low-frequency operation.
+
+Advantages:
+
+* Immediate consistency.
+* Simpler implementation.
+* Easier debugging.
+* Suitable for the current project scope.
+
+Future versions may migrate to RabbitMQ or Kafka for asynchronous communication.
+
+---
+
+## 8. Stateless Authentication
+
+Spring Security is configured with
+
+```text
+SessionCreationPolicy.STATELESS
+```
+
+Every request must include a valid JWT.
+
+No HTTP session is maintained.
+
+---
+
+## APIs Implemented
+
+### Protected APIs
+
+```http
+POST /products
+
+GET /products/{productId}
+```
+
+---
+
+## Environment Variables
+
+```text
+JWT_SECRET
+PRODUCT_DB_URL
+PRODUCT_DB_USERNAME
+PRODUCT_DB_PASSWORD
+```
+
+---
+
+## Module Outcome
+
+After completing this module:
+
+* Product information is managed independently.
+* Products are persisted using MySQL.
+* Seller ownership is enforced through JWT.
+* Stateless authentication is reused from the User Service.
+* Product metadata is completely separated from inventory.
+* Foundation is ready for Inventory Service integration.
+
