@@ -19,7 +19,9 @@ public class ProductController {
 
     @PostMapping
     public ResponseEntity<CreateProductResponse> createProduct(
-            @Valid @RequestBody CreateProductRequest request) {
+            @Valid @RequestBody CreateProductRequest request)
+    {
+        System.out.println("requestreached controller "+request.getBrand());
 
         CreateProductResponse response =
                 productService.createProduct(request);
