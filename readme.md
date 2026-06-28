@@ -717,3 +717,256 @@ After completing this module:
 * Product metadata is completely separated from inventory.
 * Foundation is ready for Inventory Service integration.
 
+
+
+---
+
+---
+
+# ✅ Module 3 — Inventory Service
+
+### Objective
+
+Build a dedicated Inventory Service responsible for managing product stock independently from product metadata while supporting size-wise inventory and secure service-to-service communication.
+
+---
+
+## Features Implemented
+
+* Create Inventory API
+* Get Inventory API
+* Size-wise Stock Management
+* JWT Authentication
+* Stateless Authentication
+* Service-to-Service Authentication
+* Spring Security
+* Request Validation
+* Global Exception Handling
+* MySQL Integration
+* Environment Variable Configuration
+
+---
+
+## Database Design
+
+### Inventory
+
+```text
+id
+product_id
+size
+stock
+```
+
+---
+
+# Inventory Creation Flow
+
+```text
+Seller
+    │
+POST /products
+    │
+    ▼
+Product Service
+    │
+Save Product
+    │
+Forward JWT
+    │
+    ▼
+POST /internal/inventory
+    │
+    ▼
+JwtAuthenticationFilter
+    │
+Validate JWT
+    │
+Extract Claims
+    │
+Create Authentication
+    │
+    ▼
+Inventory Controller
+    │
+    ▼
+Inventory Service
+    │
+    ▼
+Save Inventory
+```
+
+---
+
+# Inventory Retrieval Flow
+
+```text
+Client
+    │
+GET /inventory/{productId}
+    │
+    ▼
+Inventory Service
+    │
+Fetch Stock
+    │
+Return Available Sizes and Stock
+```
+
+---
+
+# Key Design Decisions
+
+## 1. Inventory as a Separate Microservice
+
+### Option 1 (Rejected)
+
+Store stock inside Product Service.
+
+```text
+Product
+-------
+id
+name
+price
+stock
+```
+
+### Option 2 (Chosen)
+
+Dedicated Inventory Service.
+
+```text
+Product Service
+----------------
+Product Metadata
+
+Inventory Service
+-----------------
+Stock
+Availability
+```
+
+### Why?
+
+Inventory changes much more frequently than product information.
+
+Keeping inventory separate allows:
+
+* Independent scaling
+* Better separation of concerns
+* Easier future extensions (reservations, warehouse management, etc.)
+
+---
+
+## 2. Product Service Stores Available Sizes
+
+Product Service stores only the available size variants.
+
+```text
+Product Sizes
+
+product_id
+size
+```
+
+Inventory Service stores only stock quantities.
+
+```text
+Inventory
+
+product_id
+size
+stock
+```
+
+### Why?
+
+The Product Service should always be able to return all available variants, even when stock becomes zero.
+
+---
+
+## 3. Service-to-Service JWT Authentication
+
+Instead of exposing internal APIs publicly,
+
+```text
+Product Service
+        │
+JWT
+        │
+        ▼
+Inventory Service
+```
+
+The original client JWT is forwarded to Inventory Service.
+
+Advantages:
+
+* No public access to internal APIs
+* Reuses existing authentication
+* No additional authentication server
+* Stateless communication
+
+---
+
+## 4. Local JWT Validation
+
+Inventory Service validates JWT locally using the shared signing key.
+
+Advantages:
+
+* No network calls to User Service
+* Low latency
+* Better scalability
+
+---
+
+## 5. Stateless Authentication
+
+Spring Security is configured with
+
+```text
+SessionCreationPolicy.STATELESS
+```
+
+Every request requires a valid JWT.
+
+---
+
+## APIs Implemented
+
+### Internal APIs
+
+```http
+POST /internal/inventory
+```
+
+### Public APIs
+
+```http
+GET /inventory/{productId}
+```
+
+---
+
+## Environment Variables
+
+```text
+JWT_SECRET
+INVENTORY_DB_URL
+INVENTORY_DB_USERNAME
+INVENTORY_DB_PASSWORD
+```
+
+---
+
+## Module Outcome
+
+After completing this module:
+
+* Inventory is managed independently from product metadata.
+* Size-wise stock management is implemented.
+* Product and Inventory services communicate securely.
+* Stateless JWT authentication is reused across services.
+* Foundation is ready for Order Service and stock deduction.

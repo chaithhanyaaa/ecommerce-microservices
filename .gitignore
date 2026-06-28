@@ -1,9 +1,18 @@
+
+
+
 # IntelliJ
 .idea/
-**/.idea/
+*.iml
 
-# Maven
+# Build
 target/
+
+# Logs
+*.log
+
+# Environment
+**/.env
 
 # OS
 .DS_Store
