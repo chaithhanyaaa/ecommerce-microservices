@@ -1,6 +1,7 @@
 package com.ecommerce.inventoryservice.controller;
 
 import com.ecommerce.inventoryservice.dto.request.CreateInventoryRequest;
+import com.ecommerce.inventoryservice.dto.request.DeductInventoryRequest;
 import com.ecommerce.inventoryservice.dto.response.InventoryResponse;
 import com.ecommerce.inventoryservice.service.InventoryService;
 import jakarta.validation.Valid;
@@ -30,6 +31,14 @@ public class InventoryController {
 
 
         return inventoryService.getInventory(productId);
+    }
+
+
+    @PostMapping("/internal/inventory/deduct")
+    public void deductInventory(
+            @Valid @RequestBody DeductInventoryRequest request) {
+
+        inventoryService.deductInventory(request);
     }
 
 }

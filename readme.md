@@ -957,6 +957,140 @@ JWT_SECRET
 INVENTORY_DB_URL
 INVENTORY_DB_USERNAME
 INVENTORY_DB_PASSWORD
+REDIS_HOST
+REDIS_PORT
+
+```
+```
+Cache write through pattren- when product is added we first add to the mysql then redis stock.
+
+
+
+
+when order service asks inventory service for the stock,it reads from the cache and do dec operation, then update the mysql db 
+
+what if we use read through- if we do that cache miss happens and all rqst goes to the db all read the same stock ans some inconsistency happens
+```
+
+```
+what if db saved butredis not ?
+
+Now we have:
+
+MySQL
+-------
+Product 101
+Stock 50
+
+Redis
+------
+No Key
+
+Now the Order Service places an order.
+
+Inventory Service tries:
+
+GET inventory:101:M
+
+Redis returns:
+
+Key not found
+
+Even though MySQL has stock.
+
+So are we inconsistent?
+
+Yes.
+
+This is called data inconsistency between the cache and the database.
+
+How do real companies solve it?
+
+There are several approaches.
+
+Option 1 (What we'll do now)
+
+Fail the entire request.
+
+Save MySQL ✅
+
+↓
+
+Save Redis ❌
+
+↓
+
+Throw Exception
+
+The request fails.
+
+But...
+
+If MySQL has already committed, we still have inconsistent data.
+
+So this alone isn't enough.
+
+Option 2 (Transaction + Compensation)
+Save MySQL
+
+↓
+
+Redis Failed
+
+↓
+
+Delete MySQL Record
+
+Roll back the database change.
+
+The problem?
+
+Redis isn't part of the database transaction.
+
+Spring cannot roll back Redis automatically.
+
+You'd have to write compensation logic yourself.
+
+Option 3 (Retry)
+MySQL Saved
+
+↓
+
+Redis Failed
+
+↓
+
+Retry 3 Times
+
+Often Redis failures are temporary.
+
+This works well for transient network issues.
+
+Option 4 (Kafka / Outbox) ⭐
+
+This is what large systems commonly do.
+
+Save MySQL
+
+↓
+
+Save Outbox Event
+
+↓
+
+Commit Transaction
+
+↓
+
+Kafka
+
+↓
+
+Update Redis
+
+Eventually Redis becomes consistent.
+
+This is the most robust solution, but it introduces Kafka and the Outbox Patte
 ```
 
 ---
@@ -970,3 +1104,239 @@ After completing this module:
 * Product and Inventory services communicate securely.
 * Stateless JWT authentication is reused across services.
 * Foundation is ready for Order Service and stock deduction.
+
+
+---
+
+# ✅ Module 3 — OrderService Service
+
+-> here order service gets the price from the product service ,if order happend update the redis and db synchrnously ,no improve in latency ,throughput ,
+->I chose this design intentionally because I wanted to learn Redis and atomic operations without introducing additional distributed system complexity.
+If I wanted to optimize throughput and reduce latency further, I would introduce a message broker like Kafka. The request would return immediately after the Redis deduction, and MySQL would be updated asynchronously by a Kafka consumer. That removes MySQL from the critical request path and significantly improves throughput."
+
+
+## Inventory Flow with Redis Cache
+
+
+The Inventory Service is responsible for managing product stock. It owns the inventory database and ensures that stock updates are performed safely and efficiently.
+
+When a seller creates a new product, the Product Service forwards the inventory information to the Inventory Service. The Inventory Service stores the inventory in both MySQL and Redis using the **Write-Through Cache** pattern.
+
+---
+
+# Product Creation Flow
+
+```text
+Seller
+   │
+   ▼
+POST /products
+   │
+   ▼
+Product Service
+   │
+   ├── Save Product
+   ├── Save Product Sizes
+   └── Call Inventory Service
+            │
+            ▼
+      Create Inventory
+            │
+     ┌──────┴──────┐
+     ▼             ▼
+ MySQL         Redis Cache
+```
+
+---
+
+# Inventory Creation
+
+For every product size, Inventory Service creates a separate inventory record.
+
+Example:
+
+| Product ID | Size | Stock |
+|------------|------|------:|
+| 15 | S | 20 |
+| 15 | M | 15 |
+| 15 | L | 10 |
+
+The same information is immediately written to Redis.
+
+---
+
+# Redis Cache
+
+Redis follows the **Write-Through Cache** strategy.
+
+Whenever inventory is created, the data is written to:
+
+1. MySQL (Persistent Storage)
+2. Redis (Fast Cache)
+
+Both remain synchronized during inventory creation.
+
+---
+
+# Redis Key Format
+
+Each product-size combination is stored as an individual Redis key.
+
+```
+inventory:{productId}:{size}
+```
+
+Example:
+
+```
+inventory:15:S
+inventory:15:M
+inventory:15:L
+```
+
+Values stored:
+
+```
+inventory:15:S -> 20
+inventory:15:M -> 15
+inventory:15:L -> 10
+```
+
+The value represents the **currently available stock** for that specific size.
+
+---
+
+# Why Separate Keys?
+
+Instead of storing all sizes inside a single object, each size has its own Redis key.
+
+Example:
+
+```
+inventory:15:S
+inventory:15:M
+inventory:15:L
+```
+
+Advantages:
+
+- Constant time (O(1)) lookup
+- Independent stock updates
+- Simple key structure
+- Easy debugging
+- Supports atomic stock deduction
+
+---
+
+# Stock Deduction Flow
+
+When a customer places an order:
+
+```text
+Customer
+   │
+   ▼
+Order Service
+   │
+   ▼
+Inventory Service
+   │
+   ▼
+Redis (Lua Script)
+   │
+   ▼
+MySQL
+   │
+   ▼
+Order Created
+```
+
+---
+
+# Why Redis First?
+
+Inventory Service first updates Redis using a Lua script.
+
+The Lua script performs the following operations atomically:
+
+1. Read current stock.
+2. Verify sufficient stock is available.
+3. Deduct requested quantity.
+4. Return remaining stock.
+
+Since the entire script executes as a single atomic operation, concurrent requests cannot modify the same stock simultaneously.
+
+This prevents race conditions and overselling.
+
+---
+
+# Synchronizing MySQL
+
+After Redis successfully deducts the stock, the Inventory Service updates MySQL with the latest stock value.
+
+Current flow:
+
+```text
+Redis
+   │
+   ▼
+MySQL
+   │
+   ▼
+Response
+```
+
+This guarantees that Redis and MySQL remain consistent after each successful inventory update.
+
+---
+
+# Current Limitation
+
+The current implementation updates MySQL synchronously after Redis.
+
+While Redis provides atomic stock deduction, every request still waits for MySQL to complete before returning a response.
+
+As a result:
+
+- Request latency still depends on MySQL.
+- MySQL remains the write bottleneck under heavy load.
+
+---
+
+# Future Improvement
+
+To improve scalability, MySQL updates can be made asynchronous using Kafka.
+
+Future architecture:
+
+```text
+Customer
+   │
+   ▼
+Order Service
+   │
+   ▼
+Inventory Service
+   │
+   ▼
+Redis (Atomic DECR)
+   │
+   ▼
+Return Success
+   │
+   ▼
+Kafka
+   │
+   ▼
+Inventory Consumer
+   │
+   ▼
+MySQL
+```
+
+Benefits:
+
+- Lower response latency
+- Higher throughput
+- MySQL removed from the critical request path
+- Better scalability during high traffic

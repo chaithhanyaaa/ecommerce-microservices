@@ -109,8 +109,7 @@ public class ProductService {
 
     public ProductResponse getProduct(Long productId)
     {
-        Product product = productRepository
-                .findByIdAndIsActiveTrue(productId)
+        Product product = productRepository.findByIdAndIsActiveTrue(productId)
                 .orElseThrow(() -> new ProductNotFoundException("Product not found"));
 
         List<String> availableSizes = productSizeRepository
