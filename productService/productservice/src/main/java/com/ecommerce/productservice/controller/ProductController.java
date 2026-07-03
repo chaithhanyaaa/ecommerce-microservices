@@ -21,7 +21,6 @@ public class ProductController {
     public ResponseEntity<CreateProductResponse> createProduct(
             @Valid @RequestBody CreateProductRequest request)
     {
-        System.out.println("requestreached controller "+request.getBrand());
 
         CreateProductResponse response =
                 productService.createProduct(request);
